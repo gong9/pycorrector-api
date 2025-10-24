@@ -14,6 +14,10 @@
 
 bert + 混淆词表
 
+## 示例
+
+![示例](image/example.png)
+
 ## 开发
 
 ```bash
