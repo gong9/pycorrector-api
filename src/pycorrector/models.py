@@ -7,11 +7,11 @@ class CorrectionRequest(BaseModel):
 
     text: str = Field(..., description="需要纠错的文本", min_length=1, max_length=10000)
     model_type: str = Field(
-        "gpt", description="使用的纠错模型类型", pattern="^(gpt|macbert)$"
+        "gpt", description="使用的纠错模型类型", pattern="^(gpt|macbert|kenlm)$"
     )
 
     class Config:
-        schema_extra = {"example": {"text": "今天新情很好", "model_type": "gpt"}}
+        json_schema_extra = {"example": {"text": "今天新情很好", "model_type": "gpt"}}
 
 
 class BatchCorrectionRequest(BaseModel):
@@ -21,11 +21,11 @@ class BatchCorrectionRequest(BaseModel):
         ..., description="需要纠错的文本列表", min_items=1, max_items=100
     )
     model_type: str = Field(
-        "gpt", description="使用的纠错模型类型", pattern="^(gpt|macbert)$"
+        "gpt", description="使用的纠错模型类型", pattern="^(gpt|macbert|kenlm)$"
     )
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {"texts": ["今天新情很好", "这就是生或啊"], "model_type": "gpt"}
         }
 
@@ -46,7 +46,7 @@ class CorrectionResult(BaseModel):
     errors: List[ErrorInfo] = Field(default=[], description="检测到的错误列表")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "source": "今天新情很好",
                 "target": "今天心情很好",

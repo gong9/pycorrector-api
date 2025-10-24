@@ -3,10 +3,12 @@ import time
 import logging
 from typing import Dict, Any
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from .models import (
     CorrectionRequest,
@@ -18,55 +20,24 @@ from .models import (
     ErrorResponse,
     HealthResponse,
 )
+from .utils import format_errors
+from .factory import build_correctors
+from .settings import Settings
+from .constants import DEFAULT_MODEL_DESCRIPTIONS
 
 # 设置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 全局变量存储模型实例
+settings = Settings()
 correctors: Dict[str, Any] = {}
 
 
 def load_models():
-    """加载纠错模型"""
+    """加载纠错模型（使用工厂 + 适配器）。"""
     global correctors
-
-    try:
-        # 设置环境变量
-        os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-        os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
-
-        # 禁用 MPS 检测
-        import torch
-
-        torch.backends.mps.is_available = lambda: False
-
-        logger.info("开始加载纠错模型...")
-
-        # 加载GPT纠错模型
-        try:
-            from pycorrector.gpt.gpt_corrector import GptCorrector
-
-            correctors["gpt"] = GptCorrector(device="cpu")
-            logger.info("GPT纠错模型加载成功")
-        except Exception as e:
-            logger.error(f"GPT纠错模型加载失败: {e}")
-            correctors["gpt"] = None
-
-        # 加载MacBert纠错模型
-        try:
-            from pycorrector.macbert.macbert_corrector import MacBertCorrector
-
-            correctors["macbert"] = MacBertCorrector(
-                "shibing624/macbert4csc-base-chinese"
-            )
-            logger.info("MacBert纠错模型加载成功")
-        except Exception as e:
-            logger.error(f"MacBert纠错模型加载失败: {e}")
-            correctors["macbert"] = None
-
-    except Exception as e:
-        logger.error(f"模型加载过程中发生错误: {e}")
+    logger.info("开始加载纠错模型...")
+    correctors = build_correctors(settings)  # type: ignore[assignment]
 
 
 def unload_models():
@@ -105,17 +76,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-def format_errors(errors_list):
-    """格式化错误信息"""
-    formatted_errors = []
-    for error in errors_list:
-        if isinstance(error, tuple) and len(error) == 3:
-            original, corrected, position = error
-            formatted_errors.append(
-                ErrorInfo(original=original, corrected=corrected, position=position)
-            )
-    return formatted_errors
+# 挂载静态文件
+static_dir = Path(__file__).parent.parent.parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    logger.info(f"静态文件目录已挂载: {static_dir}")
 
 
 def process_correction_result(result):
@@ -124,7 +89,14 @@ def process_correction_result(result):
         return CorrectionResult(
             source=result.get("source", ""),
             target=result.get("target", ""),
-            errors=format_errors(result.get("errors", [])),
+            errors=[
+                ErrorInfo(
+                    original=e["original"],
+                    corrected=e["corrected"],
+                    position=e["position"],
+                )
+                for e in format_errors(result.get("errors", []))
+            ],
         )
     return result
 
@@ -139,9 +111,15 @@ async def global_exception_handler(request, exc):
     )
 
 
-@app.get("/", response_model=dict)
+@app.get("/")
 async def root():
-    """根路径"""
+    """根路径 - 重定向到测试页面"""
+    return RedirectResponse(url="/static/index.html")
+
+
+@app.get("/api")
+async def api_info():
+    """API信息"""
     return {"message": "中文文本纠错API服务", "version": "1.0.0", "docs": "/docs"}
 
 
@@ -176,19 +154,7 @@ async def correct_text(request: CorrectionRequest):
             )
 
         corrector = correctors[request.model_type]
-
-        # 执行纠错
-        if hasattr(corrector, "correct"):
-            # MacBert模型使用correct方法
-            result = corrector.correct(request.text)
-        else:
-            # GPT模型使用correct_batch方法
-            results = corrector.correct_batch([request.text])
-            result = (
-                results[0]
-                if results
-                else {"source": request.text, "target": request.text, "errors": []}
-            )
+        result = corrector.correct_text(request.text)
 
         processing_time = time.time() - start_time
 
@@ -226,18 +192,8 @@ async def correct_batch_texts(request: BatchCorrectionRequest):
             )
 
         corrector = correctors[request.model_type]
-        results = []
-
-        # 根据模型类型执行不同的纠错逻辑
-        if hasattr(corrector, "correct_batch"):
-            # GPT模型支持批量处理
-            batch_results = corrector.correct_batch(request.texts)
-            results = [process_correction_result(result) for result in batch_results]
-        else:
-            # MacBert模型逐个处理
-            for text in request.texts:
-                result = corrector.correct(text)
-                results.append(process_correction_result(result))
+        batch_results = corrector.correct_texts(request.texts)
+        results = [process_correction_result(r) for r in batch_results]
 
         processing_time = time.time() - start_time
 
@@ -266,10 +222,7 @@ async def list_models():
     for model_name, model_instance in correctors.items():
         models_info[model_name] = {
             "loaded": model_instance is not None,
-            "description": {
-                "gpt": "基于GPT的中文文本纠错模型",
-                "macbert": "基于MacBERT的中文拼写检查模型",
-            }.get(model_name, "未知模型"),
+            "description": DEFAULT_MODEL_DESCRIPTIONS.get(model_name, "未知模型"),
         }
 
     return {"available_models": models_info, "default_model": "gpt"}
