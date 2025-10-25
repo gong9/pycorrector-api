@@ -11,9 +11,10 @@ class BaseCorrectorAdapter:
             self.confusion_dict = load_confusion_dict(confusion_path)
 
     def _apply_confusion_post_process(self, result: Dict[str, Any]) -> Dict[str, Any]:
-        """应用混淆词表后处理。"""
+        """应用混淆词表后处理，并统一添加错误类型。"""
         if not self.confusion_dict:
-            return result
+            # 即使没有混淆词表，也要统一添加 error_type
+            return self._add_error_type(result)
 
         target = result.get("target", result.get("source", ""))
         corrected_target, new_errors = apply_confusion_dict(target, self.confusion_dict)
@@ -21,13 +22,72 @@ class BaseCorrectorAdapter:
         # 合并错误列表
         errors = result.get("errors", [])
         for wrong, correct, pos in new_errors:
-            errors.append({"original": wrong, "corrected": correct, "position": pos})
+            errors.append(
+                {
+                    "original": wrong,
+                    "corrected": correct,
+                    "position": pos,
+                    "error_type": "typo",  # 混淆词表纠错都是错别字
+                    "explanation": "",
+                }
+            )
 
-        return {
+        result = {
             "source": result.get("source", ""),
             "target": corrected_target,
             "errors": errors,
         }
+
+        return self._add_error_type(result)
+
+    def _add_error_type(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """给所有错误统一添加 error_type 字段（传统模型都是错别字）。"""
+        errors = result.get("errors", [])
+        normalized_errors = []
+
+        for error in errors:
+            # 如果是 tuple 格式 (original, corrected, position)，转换为 dict
+            if isinstance(error, tuple):
+                if len(error) >= 3:
+                    original = error[0]
+                    corrected = error[1]
+                    # 生成简单的说明
+                    explanation = self._generate_explanation(original, corrected)
+                    normalized_errors.append(
+                        {
+                            "original": original,
+                            "corrected": corrected,
+                            "position": error[2],
+                            "error_type": "typo",
+                            "explanation": explanation,
+                        }
+                    )
+            # 如果是 dict 格式，补充缺失的字段
+            elif isinstance(error, dict):
+                if "error_type" not in error:
+                    error["error_type"] = "typo"
+                if "explanation" not in error or not error["explanation"]:
+                    # 如果没有说明，生成一个
+                    original = error.get("original", "")
+                    corrected = error.get("corrected", "")
+                    error["explanation"] = self._generate_explanation(
+                        original, corrected
+                    )
+                normalized_errors.append(error)
+
+        result["errors"] = normalized_errors
+        return result
+
+    def _generate_explanation(self, original: str, corrected: str) -> str:
+        """为错误生成简单的说明"""
+        if not original or not corrected:
+            return "字符错误"
+
+        # 判断是否是常见的错别字
+        if len(original) == 1 and len(corrected) == 1:
+            return f"'{original}' 应为 '{corrected}'"
+
+        return "字词错误"
 
     def correct_text(self, text: str) -> Dict[str, Any]:
         raise NotImplementedError
@@ -99,9 +159,11 @@ class KenLMAdapter(BaseCorrectorAdapter):
         # 如果返回的是 (corrected, errors) 元组格式（旧版本）
         if isinstance(result, tuple):
             corrected, errors = result
-            return {"source": text, "target": corrected, "errors": errors}
-        # 如果返回的是字典格式（新版本）
-        return result
+            result = {"source": text, "target": corrected, "errors": errors}
+        # 统一添加错误类型
+        return self._add_error_type(result)
 
     def correct_texts(self, texts: List[str]) -> List[Dict[str, Any]]:
-        return self.corrector.correct_batch(texts)
+        results = self.corrector.correct_batch(texts)
+        # 统一添加错误类型
+        return [self._add_error_type(r) for r in results]

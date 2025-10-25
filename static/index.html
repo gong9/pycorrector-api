@@ -308,17 +308,39 @@
         <div class="main-content">
 
             <div class="model-selector">
-                <label class="label">选择模型（所有模型均支持自定义混淆词表）</label>
-                <div>
-                    <button class="model-btn active" data-model="gpt">GPT</button>
-                    <button class="model-btn" data-model="macbert">MacBERT</button>
-                    <button class="model-btn" data-model="kenlm">KenLM</button>
+                <label class="label">纠错模式</label>
+                <div style="margin-bottom: 12px;">
+                    <button class="model-btn active" data-mode="single">单句纠错</button>
+                    <button class="model-btn" data-mode="fulltext">全文纠错</button>
+                </div>
+                
+                <div id="singleModelSelector">
+                    <label class="label">选择模型</label>
+                    <div>
+                        <button class="model-btn active" data-model="gpt">GPT</button>
+                        <button class="model-btn" data-model="macbert">BERT</button>
+                        <button class="model-btn" data-model="kenlm">KenLM</button>
+                        <button class="model-btn" data-model="qwen">大模型(AI深度检查)</button>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 12px; color: #8c8c8c;">
+                        提示：GPT/MacBERT/KenLM 支持自定义混淆词表 | Qwen 提供深度语义分析
+                    </div>
+                </div>
+                
+                <div id="fulltextOptions" style="display: none;">
+                    <label class="label">
+                        <input type="checkbox" id="useEnsemble" style="margin-right: 8px;">
+                        使用模型融合（小模型+规则 + 大模型，准确率更高）
+                    </label>
+                    <div style="margin-top: 8px; font-size: 12px; color: #8c8c8c;">
+                        提示：全文纠错会自动按换行符分割文本进行批量处理。融合模式使用 BERT（含混淆词表规则）+ 大模型深度分析
+                    </div>
                 </div>
             </div>
 
             <div class="input-section">
                 <label class="label" for="inputText">输入文本</label>
-                <textarea id="inputText" placeholder="请输入需要纠错的文本"></textarea>
+                <textarea id="inputText" placeholder="请输入需要纠错的文本（全文模式支持多行输入）"></textarea>
             </div>
 
             <div class="button-group">
@@ -358,11 +380,18 @@
 
             <div class="examples">
                 <div class="examples-title">示例文本</div>
-                <div class="example-item" onclick="setExample(this)">今天新情很好</div>
-                <div class="example-item" onclick="setExample(this)">这就是生或啊</div>
-                <div class="example-item" onclick="setExample(this)">我买了一个iphonex</div>
-                <div class="example-item" onclick="setExample(this)">少先队员因该为老人让坐</div>
-                <div class="example-item" onclick="setExample(this)">机七学习是人工智能的一个重要分知</div>
+                <div id="singleExamples">
+                    <div class="example-item" onclick="setExample(this)">今天新情很好</div>
+                    <div class="example-item" onclick="setExample(this)">这就是生或啊</div>
+                    <div class="example-item" onclick="setExample(this)">我买了一个iphonex</div>
+                    <div class="example-item" onclick="setExample(this)">少先队员因该为老人让坐</div>
+                    <div class="example-item" onclick="setExample(this)">机七学习是人工智能的一个重要分知</div>
+                </div>
+                <div id="fulltextExamples" style="display: none;">
+                    <div class="example-item" onclick="setExample(this, true)">文章示例1</div>
+                    <div class="example-item" onclick="setExample(this, true)">文章示例2</div>
+                    <div class="example-item" onclick="setExample(this, true)">文章示例3</div>
+                </div>
             </div>
         </div>
     </div>
@@ -373,19 +402,59 @@
 
     <script>
         let currentModel = 'gpt';
+        let currentMode = 'single';
+        
+        // 全文示例文本
+        const fulltextExamples = {
+            '文章示例1': '今天新情很好，阳光明眉。\n我和朋友们一起去公园玩耍。\n我们拍了很多照片，度过了愉快的一天。',
+            '文章示例2': '机七学习是人工智能的一个重要分知。\n它通过算法让计算机自动从数剧中学习。\n深度学习是机七学习的一个重要方向。',
+            '文章示例3': '少先队员因该为老人让坐。\n这是我们中华民族的传统美德。\n尊老爱幼是每个人都应该做到的事情。'
+        };
+
+        // 模式切换
+        document.querySelectorAll('[data-mode]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                // 移除所有模式按钮的active
+                document.querySelectorAll('[data-mode]').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentMode = this.dataset.mode;
+                
+                // 切换UI
+                if (currentMode === 'fulltext') {
+                    document.getElementById('singleModelSelector').style.display = 'none';
+                    document.getElementById('fulltextOptions').style.display = 'block';
+                    document.getElementById('singleExamples').style.display = 'none';
+                    document.getElementById('fulltextExamples').style.display = 'block';
+                } else {
+                    document.getElementById('singleModelSelector').style.display = 'block';
+                    document.getElementById('fulltextOptions').style.display = 'none';
+                    document.getElementById('singleExamples').style.display = 'block';
+                    document.getElementById('fulltextExamples').style.display = 'none';
+                }
+                
+                // 清空输入
+                document.getElementById('inputText').value = '';
+                document.getElementById('resultSection').style.display = 'none';
+            });
+        });
 
         // 模型选择
-        document.querySelectorAll('.model-btn').forEach(btn => {
+        document.querySelectorAll('[data-model]').forEach(btn => {
             btn.addEventListener('click', function() {
-                document.querySelectorAll('.model-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('[data-model]').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
                 currentModel = this.dataset.model;
             });
         });
 
         // 设置示例
-        function setExample(element) {
-            document.getElementById('inputText').value = element.textContent;
+        function setExample(element, isFulltext = false) {
+            if (isFulltext) {
+                const text = fulltextExamples[element.textContent];
+                document.getElementById('inputText').value = text || element.textContent;
+            } else {
+                document.getElementById('inputText').value = element.textContent;
+            }
         }
 
         // 清空
@@ -409,21 +478,40 @@
             document.querySelector('.btn-correct').disabled = true;
 
             try {
-                const response = await fetch('/correct', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        text: text,
-                        model_type: currentModel
-                    })
-                });
+                let response;
+                
+                if (currentMode === 'fulltext') {
+                    // 全文纠错
+                    const useEnsemble = document.getElementById('useEnsemble').checked;
+                    response = await fetch('/correct/fulltext', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            text: text,
+                            model_type: currentModel,
+                            use_ensemble: useEnsemble
+                        })
+                    });
+                } else {
+                    // 单句纠错
+                    response = await fetch('/correct', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            text: text,
+                            model_type: currentModel
+                        })
+                    });
+                }
 
                 const data = await response.json();
 
                 if (response.ok && data.success) {
-                    displayResult(data);
+                    displayResult(data, currentMode === 'fulltext');
                 } else {
                     // 处理错误响应
                     const errorMsg = data.detail || data.error || data.message || '未知错误';
@@ -438,13 +526,36 @@
         }
 
         // 显示结果
-        function displayResult(data) {
-            const result = data.data;
-            
+        function displayResult(data, isFulltext = false) {
             // 统计信息
-            document.getElementById('errorCount').textContent = result.errors.length;
+            let totalErrors = 0;
+            if (isFulltext) {
+                // 批量结果
+                totalErrors = data.data.reduce((sum, result) => sum + result.errors.length, 0);
+            } else {
+                // 单个结果
+                totalErrors = data.data.errors.length;
+            }
+            
+            document.getElementById('errorCount').textContent = totalErrors;
             document.getElementById('processingTime').textContent = data.processing_time.toFixed(3);
 
+            if (isFulltext) {
+                // 全文纠错显示
+                displayFulltextResult(data);
+            } else {
+                // 单句纠错显示
+                displaySingleResult(data);
+            }
+
+            // 显示结果区域
+            document.getElementById('resultSection').style.display = 'block';
+        }
+        
+        // 显示单句结果
+        function displaySingleResult(data) {
+            const result = data.data;
+            
             // 原文和纠正后文本
             document.getElementById('sourceText').textContent = result.source;
             document.getElementById('targetText').textContent = result.target;
@@ -463,9 +574,7 @@
                 result.errors.forEach((error, index) => {
                     const errorDiv = document.createElement('div');
                     errorDiv.className = 'error-item';
-                    errorDiv.innerHTML = `
-                        位置 ${error.position}：<span class="error-highlight">${error.original}</span> → <span class="correct-highlight">${error.corrected}</span>
-                    `;
+                    errorDiv.innerHTML = formatError(error);
                     errorsContainer.appendChild(errorDiv);
                 });
             } else {
@@ -474,9 +583,99 @@
                 noErrorDiv.innerHTML = '<div class="result-text" style="color: #52c41a;">未发现错误</div>';
                 errorsContainer.appendChild(noErrorDiv);
             }
+        }
+        
+        // 显示全文结果
+        function displayFulltextResult(data) {
+            const results = data.data;
+            
+            // 合并所有原文和纠正文本
+            const allSources = results.map(r => r.source).join('\n');
+            const allTargets = results.map(r => r.target).join('\n');
+            
+            document.getElementById('sourceText').textContent = allSources;
+            document.getElementById('targetText').textContent = allTargets;
 
-            // 显示结果区域
-            document.getElementById('resultSection').style.display = 'block';
+            // 错误详情
+            const errorsContainer = document.getElementById('errorsContainer');
+            errorsContainer.innerHTML = '';
+
+            let hasErrors = false;
+            
+            results.forEach((result, lineIndex) => {
+                if (result.errors.length > 0) {
+                    hasErrors = true;
+                    
+                    const lineTitle = document.createElement('div');
+                    lineTitle.className = 'result-title';
+                    lineTitle.textContent = `第 ${lineIndex + 1} 行错误`;
+                    lineTitle.style.marginTop = lineIndex > 0 ? '16px' : '0';
+                    lineTitle.style.marginBottom = '8px';
+                    errorsContainer.appendChild(lineTitle);
+                    
+                    result.errors.forEach((error) => {
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'error-item';
+                        errorDiv.innerHTML = formatError(error);
+                        errorsContainer.appendChild(errorDiv);
+                    });
+                }
+            });
+            
+            if (!hasErrors) {
+                const noErrorDiv = document.createElement('div');
+                noErrorDiv.className = 'result-box';
+                noErrorDiv.innerHTML = '<div class="result-text" style="color: #52c41a;">未发现错误</div>';
+                errorsContainer.appendChild(noErrorDiv);
+            }
+        }
+        
+        // 格式化错误信息
+        function formatError(error) {
+            const typeMap = {
+                'typo': '错别字',
+                'semantic': '语义问题',
+                'grammar': '语法错误',
+                'punctuation': '标点符号',
+                'redundant': '多余内容',
+                'missing': '缺失内容',
+                'unknown': '未知'
+            };
+            
+            let html = '';
+            
+            // 语义问题：只显示错误位置和原文，不显示修正
+            if (error.error_type === 'semantic') {
+                html = `
+                    <div>
+                        <span style="color: #ff4d4f; font-weight: 500;">[语义问题]</span>
+                        位置 ${error.position}：<span class="error-highlight">${error.original}</span>
+                    </div>
+                `;
+                if (error.explanation) {
+                    html += `<div style="margin-top: 6px; color: #666; font-size: 13px; padding-left: 20px;">原因：${error.explanation}</div>`;
+                }
+            } 
+            // 其他类型：显示 错误 → 正确
+            else {
+                html = `<div>`;
+                
+                // 显示类型标签
+                if (error.error_type) {
+                    html += `<span style="color: #1890ff; font-weight: 500;">[${typeMap[error.error_type] || error.error_type}]</span> `;
+                }
+                
+                // 显示位置和修正
+                html += `位置 ${error.position}：<span class="error-highlight">${error.original || '(空)'}</span> → <span class="correct-highlight">${error.corrected || '(空)'}</span>`;
+                html += `</div>`;
+                
+                // 所有类型的错误都显示 explanation（如果有）
+                if (error.explanation && error.explanation.trim() !== '') {
+                    html += `<div style="margin-top: 6px; color: #666; font-size: 13px; padding-left: 20px;">原因：${error.explanation}</div>`;
+                }
+            }
+            
+            return html;
         }
 
         // 支持回车键提交

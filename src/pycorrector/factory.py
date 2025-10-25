@@ -5,6 +5,7 @@ from typing import Dict
 
 from .adapters import BaseCorrectorAdapter, GptAdapter, MacBertAdapter, KenLMAdapter
 from .settings import Settings
+from .qwen_adapter import QwenAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -59,5 +60,31 @@ def build_correctors(settings: Settings) -> Dict[str, BaseCorrectorAdapter]:
     except Exception as e:
         logger.error(f"✗ KenLM 模型加载失败: {e}")
         correctors["kenlm"] = None  # type: ignore[assignment]
+
+    # Qwen 大模型 (使用 LangChain + diff 算法精确定位)
+    if settings.enable_qwen:
+        try:
+            # 优先从环境变量 DASHSCOPE_API_KEY 读取
+            api_key = os.environ.get("DASHSCOPE_API_KEY") or settings.qwen_api_key
+            if api_key:
+                correctors["qwen"] = QwenAdapter(
+                    api_key=api_key,
+                    model=settings.qwen_model,
+                    max_workers=settings.qwen_max_workers,
+                )
+                logger.info(
+                    f"✓ Qwen 模型加载成功 (模型: {settings.qwen_model}, 并发数: {settings.qwen_max_workers})"
+                )
+            else:
+                logger.warning(
+                    "✗ Qwen API Key 未配置，跳过加载。请设置环境变量 DASHSCOPE_API_KEY"
+                )
+                correctors["qwen"] = None  # type: ignore[assignment]
+        except Exception as e:
+            logger.error(f"✗ Qwen 模型加载失败: {e}")
+            correctors["qwen"] = None  # type: ignore[assignment]
+    else:
+        logger.info("Qwen 模型已禁用")
+        correctors["qwen"] = None  # type: ignore[assignment]
 
     return correctors

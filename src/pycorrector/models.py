@@ -7,7 +7,7 @@ class CorrectionRequest(BaseModel):
 
     text: str = Field(..., description="需要纠错的文本", min_length=1, max_length=10000)
     model_type: str = Field(
-        "gpt", description="使用的纠错模型类型", pattern="^(gpt|macbert|kenlm)$"
+        "gpt", description="使用的纠错模型类型", pattern="^(gpt|macbert|kenlm|qwen)$"
     )
 
     class Config:
@@ -21,12 +21,33 @@ class BatchCorrectionRequest(BaseModel):
         ..., description="需要纠错的文本列表", min_items=1, max_items=100
     )
     model_type: str = Field(
-        "gpt", description="使用的纠错模型类型", pattern="^(gpt|macbert|kenlm)$"
+        "gpt", description="使用的纠错模型类型", pattern="^(gpt|macbert|kenlm|qwen)$"
     )
 
     class Config:
         json_schema_extra = {
             "example": {"texts": ["今天新情很好", "这就是生或啊"], "model_type": "gpt"}
+        }
+
+
+class FullTextCorrectionRequest(BaseModel):
+    """全文纠错请求模型"""
+
+    text: str = Field(
+        ..., description="需要纠错的全文文本", min_length=1, max_length=50000
+    )
+    model_type: str = Field(
+        "gpt", description="使用的纠错模型类型", pattern="^(gpt|macbert|kenlm|qwen)$"
+    )
+    use_ensemble: bool = Field(False, description="是否使用模型融合（千问+BERT+规则）")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "text": "今天新情很好\n这就是生或啊\n我很高心",
+                "model_type": "gpt",
+                "use_ensemble": False,
+            }
         }
 
 
@@ -36,6 +57,10 @@ class ErrorInfo(BaseModel):
     original: str = Field(..., description="原始错误字符")
     corrected: str = Field(..., description="纠正后的字符")
     position: int = Field(..., description="错误位置")
+    error_type: Optional[str] = Field(
+        default="typo", description="错误类型：typo/semantic/grammar等"
+    )
+    explanation: Optional[str] = Field(default="", description="错误原因解释")
 
 
 class CorrectionResult(BaseModel):
