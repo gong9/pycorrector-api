@@ -212,6 +212,8 @@ class QwenAdapter:
                             "original": change["original"],
                             "corrected": "",
                             "position": change["position"],
+                            "end_position": change["position"]
+                            + len(change["original"]),
                             "error_type": error_type,
                             "explanation": explanation,
                         }
@@ -223,6 +225,8 @@ class QwenAdapter:
                             "original": change["original"],
                             "corrected": change["corrected"],
                             "position": change["position"],
+                            "end_position": change["position"]
+                            + len(change["original"]),
                             "error_type": error_type,
                             "explanation": explanation,
                         }
@@ -247,6 +251,7 @@ class QwenAdapter:
                         "original": change["original"],
                         "corrected": change["corrected"],
                         "position": change["position"],
+                        "end_position": change["position"] + len(change["original"]),
                         "error_type": error_type,
                         "explanation": explanation,
                     }

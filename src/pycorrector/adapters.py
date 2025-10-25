@@ -27,6 +27,7 @@ class BaseCorrectorAdapter:
                     "original": wrong,
                     "corrected": correct,
                     "position": pos,
+                    "end_position": pos + len(wrong),
                     "error_type": "typo",  # 混淆词表纠错都是错别字
                     "explanation": "",
                 }
@@ -51,13 +52,15 @@ class BaseCorrectorAdapter:
                 if len(error) >= 3:
                     original = error[0]
                     corrected = error[1]
+                    position = error[2]
                     # 生成简单的说明
                     explanation = self._generate_explanation(original, corrected)
                     normalized_errors.append(
                         {
                             "original": original,
                             "corrected": corrected,
-                            "position": error[2],
+                            "position": position,
+                            "end_position": position + len(original),
                             "error_type": "typo",
                             "explanation": explanation,
                         }
@@ -73,6 +76,11 @@ class BaseCorrectorAdapter:
                     error["explanation"] = self._generate_explanation(
                         original, corrected
                     )
+                # 如果没有 end_position，自动计算
+                if "end_position" not in error:
+                    original = error.get("original", "")
+                    position = error.get("position", 0)
+                    error["end_position"] = position + len(original)
                 normalized_errors.append(error)
 
         result["errors"] = normalized_errors

@@ -56,7 +56,8 @@ class ErrorInfo(BaseModel):
 
     original: str = Field(..., description="原始错误字符")
     corrected: str = Field(..., description="纠正后的字符")
-    position: int = Field(..., description="错误位置")
+    position: int = Field(..., description="错误起始位置")
+    end_position: int = Field(..., description="错误结束位置")
     error_type: Optional[str] = Field(
         default="typo", description="错误类型：typo/semantic/grammar等"
     )
@@ -75,7 +76,14 @@ class CorrectionResult(BaseModel):
             "example": {
                 "source": "今天新情很好",
                 "target": "今天心情很好",
-                "errors": [{"original": "新", "corrected": "心", "position": 2}],
+                "errors": [
+                    {
+                        "original": "新",
+                        "corrected": "心",
+                        "position": 2,
+                        "end_position": 3,
+                    }
+                ],
             }
         }
 

@@ -10,10 +10,17 @@ def format_errors(errors_list) -> List[Dict[str, Any]]:
             # 元组格式：(original, corrected, position)
             original, corrected, position = error
             formatted.append(
-                {"original": original, "corrected": corrected, "position": position}
+                {
+                    "original": original,
+                    "corrected": corrected,
+                    "position": position,
+                    "end_position": position + len(original),
+                }
             )
         elif isinstance(error, dict):
-            # 字典格式：已经是目标格式，直接添加
+            # 字典格式：如果没有 end_position，自动计算
+            if "end_position" not in error:
+                error["end_position"] = error["position"] + len(error["original"])
             formatted.append(error)
     return formatted
 

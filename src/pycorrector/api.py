@@ -95,6 +95,9 @@ def process_correction_result(result):
                     original=e["original"],
                     corrected=e["corrected"],
                     position=e["position"],
+                    end_position=e.get(
+                        "end_position", e["position"] + len(e["original"])
+                    ),
                     error_type=e.get("error_type", "typo"),
                     explanation=e.get("explanation", ""),
                 )
